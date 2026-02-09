@@ -1,4 +1,5 @@
 import logging
+logging.basicConfig(level=logging.DEBUG)
 import math
 import random
 import time
@@ -96,9 +97,10 @@ class MCTS:
 
     def step(self, obs: M.ObsType) -> M.ActType:
         assert self.root.t <= self.step_limit
+
         if self.root.is_absorbing:
             for k in self.step_statistics:
-                self.step_statistics[k] = np.nan
+                self.step_statistics[k] = np.nan # set all elements to nan
             return self._last_action
 
         self._reset_step_statistics()
@@ -112,7 +114,7 @@ class MCTS:
         self.step_statistics["mem_usage"] = (
             psutil.Process().memory_info().rss / 1024**2
         )
-        self.stat_tracker.step()
+        self.stat_tracker.step() # update and store statistics from planner.step_statistics
 
         return self._last_action
 
@@ -173,6 +175,11 @@ class MCTS:
         self._log_info(f"Update time = {update_time:.4f}s")
 
     def _initial_update(self, init_obs: M.ObsType):
+        '''
+        Initialise particle belief at root (current) node based on initial observation
+            - case 1: model has get_agent_initial_belief implemented (by default is not)
+            - case 2: only add belief particles that match initial observation (rejection sampling)
+        '''
         action_node = self.root.add_child(None)
         obs_node = self._add_obs_node(action_node, init_obs, init_visits=0)
 
@@ -192,18 +199,23 @@ class MCTS:
                 joint_obs = self.model.sample_initial_obs(state)
                 if joint_obs[self.agent_id] != init_obs:
                     continue
+            # 
             else:
                 state = self.model.sample_agent_initial_state(self.agent_id, init_obs)
                 joint_obs = self.model.sample_initial_obs(state)
                 joint_obs[self.agent_id] = init_obs
 
-            if self.config.state_belief_only:
+            ###########################################
+            # only track belief of a state - ex: POMCP
+            if self.config.state_belief_only: 
                 joint_history = None
                 policy_state = None
+            
+            # otherwise track joint history and other agents policy states
             else:
                 joint_history = JointHistory.get_init_history(
                     self.model.possible_agents, joint_obs
-                )
+                ) # possible_agents return IDs of all possible agents that can interact with the environment
                 policy_state = {
                     j: self.other_agent_policies[j].sample_initial_state()
                     for j in self.model.possible_agents
@@ -227,8 +239,11 @@ class MCTS:
         self.root.parent = None
 
     def _update(self, action: M.ActType, obs: M.ObsType):
+        '''
+        Update the root node based on the taken action and received observation. Also, pruning "dead" (previous) branches
+        '''
         self._log_debug("Pruning histories")
-        # Get new root node
+        # Get root node's child
         try:
             action_node = self.root.get_child(action)
         except AssertionError as ex:
@@ -237,7 +252,8 @@ class MCTS:
             else:
                 raise ex
 
-        try:
+        try: # get child obs node matching given observation !!!
+
             obs_node = action_node.get_child(obs)
         except AssertionError:
             # Obs node not found
@@ -252,11 +268,15 @@ class MCTS:
             self._log_debug(
                 f"Belief size before reinvigoration = {obs_node.belief.size()}"
             )
+            tmp = obs_node.belief.size()
             self._log_debug(f"Parent belief size = {self.root.belief.size()}")
             self._reinvigorate(obs_node, action, obs)
             self._log_debug(
                 f"Belief size after reinvigoration = {obs_node.belief.size()}"
             )
+            # check if belief size changed after reinvigoration
+            if obs_node.belief.size() != tmp:
+                self._log_debug("Reinvigoration change belief size")
 
         self.root = obs_node
         # remove reference to parent, effectively pruning dead branches
@@ -277,17 +297,32 @@ class MCTS:
         start_time = time.time()
 
         if len(self.root.children) == 0:
+            # create action nodes for all possible actions, which will be visited during search
             for action in self.action_space:
                 self.root.add_child(action)
 
+        ###########################################################
+        # Main algo loop
         max_search_depth = 0
         n_sims = 0
+
+        #### debug ####
+        unique_states = {}
+        for particle in self.root.belief.particles:
+            # use robot state as key for counting unique states in belief
+            robot_state = particle.state[0]
+            unique_states[robot_state] = unique_states.get(robot_state, 0) + 1
+        if len(unique_states) > 1:
+            self._log_debug(f"Unique robot states in belief: {len(unique_states)}")
+
         while time.time() - start_time < self.config.search_time_limit:
             hps = self.root.belief.sample()
             _, search_depth = self._simulate(hps, self.root, 0, self.search_policy)
+        ########################################################
             self.root.visits += 1
             max_search_depth = max(max_search_depth, search_depth)
             n_sims += 1
+        
 
         search_time = time.time() - start_time
         self.step_statistics["search_time"] = search_time
@@ -312,11 +347,22 @@ class MCTS:
         depth: int,
         search_policy: Policy,
     ) -> Tuple[float, int]:
+        '''
+        SIMULATE(s, h, depth)
+        - note that for POMCP, hps only contains ENV's state (s)
+        - search_policy ~ rollout policy
+
+        return R, depth
+            - R here could be instant leaf node value, or rollout-ed / cumulated return
+        '''
+
         if depth > self.config.depth_limit or obs_node.t > self.step_limit:
             return 0, depth
 
-        if len(obs_node.children) == 0:
-            # lead node reached
+
+        ############# First time visiting this node?
+        if len(obs_node.children) == 0: 
+            # leaf node reached
             for action in self.action_space:
                 obs_node.add_child(action)
             leaf_node_value = self._evaluate(
@@ -325,11 +371,14 @@ class MCTS:
                 search_policy,
                 obs_node.search_policy_state,
             )
-            return leaf_node_value, depth
+            return leaf_node_value, depth # backup
 
-        ego_action = self._search_action_selection(obs_node)
+        ############ action selection - based on tree policy (e.g., UCT)
+        ego_action = self._search_action_selection(obs_node) # tree policy
         joint_action = self._get_joint_action(hps, ego_action)
 
+        ############ environment step (POMDP simulator)
+        # - return (s', o, r) and done
         joint_step = self.model.step(hps.state, joint_action)
         joint_obs = joint_step.observations
 
@@ -341,7 +390,12 @@ class MCTS:
             or joint_step.all_done
         )
 
-        if self.config.state_belief_only:
+        if ego_done:
+            print("debugging")
+
+        # create child_obs_node with
+        # - set of particle belief
+        if self.config.state_belief_only: # ex: POMCP
             new_history = None
             next_pi_state = None
         else:
@@ -349,12 +403,14 @@ class MCTS:
             next_pi_state = self._update_other_agent_policies(
                 joint_action, joint_obs, hps.policy_state
             )
+            
         next_hps = B.HistoryPolicyState(
             joint_step.state, new_history, next_pi_state, hps.t + 1
         )
-
+        
         action_node = obs_node.get_child(ego_action)
 
+        # Check if action node (next node) has a child node matching history - if yes, then add new particle to exisit
         if action_node.has_child(ego_obs):
             child_obs_node = action_node.get_child(ego_obs)
             child_obs_node.visits += 1
@@ -367,9 +423,12 @@ class MCTS:
                 ) / child_obs_node.visits
         else:
             child_obs_node = self._add_obs_node(action_node, ego_obs, init_visits=1)
+        
         child_obs_node.is_absorbing = ego_done
         child_obs_node.belief.add_particle(next_hps)
 
+        
+        ####### recursive simulation 
         max_depth = depth
         if not ego_done:
             future_return, max_depth = self._simulate(
@@ -377,6 +436,7 @@ class MCTS:
             )
             ego_return += self.config.discount * future_return
 
+        ###### BACKUP
         action_node.update(ego_return)
         self._min_max_stats.update(action_node.value)
         return ego_return, max_depth
@@ -412,9 +472,12 @@ class MCTS:
         agent_return = 0
         rollout_t = 0
         while depth <= self.config.depth_limit and hps.t <= self.step_limit:
+            ############ action selection
             ego_action = rollout_policy.sample_action(rollout_policy_state)
             joint_action = self._get_joint_action(hps, ego_action)
 
+            ############ environment step (POMDP simulator)
+            # - return (s', o, r) and done
             joint_step = self.model.step(hps.state, joint_action)
             joint_obs = joint_step.observations
             agent_return += (
@@ -486,7 +549,7 @@ class MCTS:
         return next_policy_state
 
     #######################################################
-    # ACTION SELECTION
+    # ACTION SELECTION a.k.a Tree policy
     #######################################################
 
     def pucb_action_selection(self, obs_node: ObsNode) -> M.ActType:
@@ -673,6 +736,8 @@ class MCTS:
             return
 
         if target_node_size is None:
+            #################################################
+            # NOTE: this is K in the paper
             particles_to_add = self.config.num_particles + self.config.extra_particles
         else:
             particles_to_add = target_node_size
@@ -737,3 +802,4 @@ class MCTS:
 
     def __str__(self):
         return f"{self.__class__.__name__}"
+

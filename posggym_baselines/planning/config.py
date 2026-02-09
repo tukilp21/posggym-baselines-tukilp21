@@ -26,6 +26,7 @@ class MCTSConfig:
     # use rollout, otherwise exception is thrown
     use_rollout_if_no_value: bool = True
 
+    # NOTE: if not init, then computed in __post_init__
     num_particles: int = field(init=False)
     extra_particles: int = field(init=False)
     depth_limit: int = field(init=False)
