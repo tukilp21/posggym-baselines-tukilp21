@@ -96,6 +96,8 @@ class MCTS:
     #######################################################
 
     def step(self, obs: M.ObsType) -> M.ActType:
+        ''' main usage of the planner: taking a step ...'''
+
         assert self.root.t <= self.step_limit
 
         if self.root.is_absorbing:
@@ -268,6 +270,7 @@ class MCTS:
             self._log_debug(
                 f"Belief size before reinvigoration = {obs_node.belief.size()}"
             )
+            ############ DEBUGGINGGGGGGGGGGGGGGGGGGGGGGGGGG
             tmp = obs_node.belief.size()
             self._log_debug(f"Parent belief size = {self.root.belief.size()}")
             self._reinvigorate(obs_node, action, obs)
@@ -277,6 +280,8 @@ class MCTS:
             # check if belief size changed after reinvigoration
             if obs_node.belief.size() != tmp:
                 self._log_debug("Reinvigoration change belief size")
+            if tmp == 0:
+                self._log_debug("Belief size ZERO????")
 
         self.root = obs_node
         # remove reference to parent, effectively pruning dead branches
@@ -287,6 +292,7 @@ class MCTS:
     #######################################################
 
     def get_action(self) -> M.ActType:
+        '''  procedure SEARCH(h) in POMCP paper'''
         if self.root.is_absorbing:
             self._log_debug("Agent in absorbing state. Not running search.")
             return self.action_space[0]
@@ -306,7 +312,7 @@ class MCTS:
         max_search_depth = 0
         n_sims = 0
 
-        #### debug ####
+        #### debug !!!!!!!!!!!!!!! ####
         unique_states = {}
         for particle in self.root.belief.particles:
             # use robot state as key for counting unique states in belief
@@ -314,6 +320,7 @@ class MCTS:
             unique_states[robot_state] = unique_states.get(robot_state, 0) + 1
         if len(unique_states) > 1:
             self._log_debug(f"Unique robot states in belief: {len(unique_states)}")
+        #### debug !!!!!!!!!!!!!!! ####
 
         while time.time() - start_time < self.config.search_time_limit:
             hps = self.root.belief.sample()
@@ -391,7 +398,8 @@ class MCTS:
         )
 
         if ego_done:
-            print("debugging")
+            # self._log_debug(f"Terminal state reached at depth {depth} with return {ego_return:.2f}")
+            pass
 
         # create child_obs_node with
         # - set of particle belief
@@ -448,18 +456,24 @@ class MCTS:
         rollout_policy: Policy,
         rollout_policy_state: PolicyState,
     ) -> float:
+        ''' Wrapper for truncated rollout's strategy (if applicable)'''
+
         start_time = time.time()
         if self.config.truncated:
             try:
+                '''instead of simulating all the way to episode end, use a learned value estimator to terminate early.'''
                 v = rollout_policy.get_value(rollout_policy_state)
             except NotImplementedError as e:
                 if self.config.use_rollout_if_no_value:
                     v = self._rollout(hps, depth, rollout_policy, rollout_policy_state)
                 else:
                     raise e
-        else:
+                
+        else: ##########: using this for POMCP
             v = self._rollout(hps, depth, rollout_policy, rollout_policy_state)
+
         self.step_statistics["evaluation_time"] += time.time() - start_time
+
         return v
 
     def _rollout(
@@ -469,6 +483,8 @@ class MCTS:
         rollout_policy: Policy,
         rollout_policy_state: PolicyState,
     ) -> float:
+        ''' A loop (instead of recursion) to get cumulative return until termination or depth limit '''
+
         agent_return = 0
         rollout_t = 0
         while depth <= self.config.depth_limit and hps.t <= self.step_limit:
@@ -480,15 +496,17 @@ class MCTS:
             # - return (s', o, r) and done
             joint_step = self.model.step(hps.state, joint_action)
             joint_obs = joint_step.observations
+
+            ########### MAIN: Compute cumulative R
             agent_return += (
                 self.config.discount**rollout_t * joint_step.rewards[self.agent_id]
             )
 
-            if (
-                joint_step.terminations[self.agent_id]
+            # -------- UPDATE --------------------------------
+            # termination check
+            if (joint_step.terminations[self.agent_id]
                 or joint_step.truncations[self.agent_id]
-                or joint_step.all_done
-            ):
+                or joint_step.all_done):
                 break
 
             if self.config.state_belief_only:
@@ -521,8 +539,10 @@ class MCTS:
         policy: Union[Policy, OtherAgentPolicy],
         policy_state: PolicyState,
     ) -> PolicyState:
-        # this is just a wrapper around policy.get_next_state but also keeps track of
-        # inference time and number of policy calls
+        '''
+        this is just a wrapper around policy.get_next_state but also keeps track of
+        inference time and number of policy calls
+        '''
         start_time = time.time()
         next_hidden_state = policy.get_next_state(action, obs, policy_state)
         self.step_statistics["inference_time"] += time.time() - start_time
@@ -665,6 +685,8 @@ class MCTS:
     def _get_joint_action(
         self, hps: B.HistoryPolicyState, ego_action: M.ActType
     ) -> Dict[str, M.ActType]:
+        ''' Get joint action for all agents given ego action and other agents policies. '''    
+
         agent_actions = {}
         for i in self.model.possible_agents:
             if i == self.agent_id:
@@ -721,12 +743,9 @@ class MCTS:
         """Reinvigoration belief associated to given history.
 
         The general reinvigoration process:
-        1. check belief needs to be reinvigorated (e.g. it's not a root belief)
-        2. Reinvigorate node using rejection sampling/custom function for fixed
-           number of tries
-        3. if desired number of particles not sampled using rejection sampling/
-           custom function then sample remaining particles using sampling
-           without rejection
+        1. Check if belief needs to be reinvigorated (e.g. it's not a root belief)
+        2. Reinvigorate node using rejection sampling/custom function for fixed number of tries
+        3. If desired number of particles not sampled using rejection sampling/custom function then sample remaining particles using sampling without rejection
         """
         start_time = time.time()
 

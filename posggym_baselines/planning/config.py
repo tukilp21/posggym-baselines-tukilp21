@@ -22,9 +22,10 @@ class MCTSConfig:
     epsilon: float = 0.01
     seed: Optional[int] = None
     state_belief_only: bool = False
-    # if `truncated` is True, and search policy has no value function, then
-    # use rollout, otherwise exception is thrown
+
+    # if `truncated` is True, and search policy (defined in POMCP/MCTS obj) has no value function, then use rollout, otherwise exception is thrown
     use_rollout_if_no_value: bool = True
+
 
     # NOTE: if not init, then computed in __post_init__
     num_particles: int = field(init=False)
