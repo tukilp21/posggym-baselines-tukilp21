@@ -101,8 +101,7 @@ class BeliefRejectionSampler:
     ):
         """Reinvigorate belief given action performed and observation received.
 
-        In general this involves adding additional particles to the belief that
-        are consistent with the action and observation.
+        In general this involves adding additional particles to the belief that are consistent with the action and observation.
 
         Arguments:
         ---------

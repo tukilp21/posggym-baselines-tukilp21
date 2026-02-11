@@ -19,6 +19,8 @@ from posggym_baselines.planning.other_policy import OtherAgentPolicy
 from posggym_baselines.planning.search_policy import SearchPolicy
 from posggym_baselines.planning.utils import MinMaxStats, PlanningStatTracker
 
+import posggym_baselines.planning.vis_mcts_tree as vis_mcts_tree
+
 
 class MCTS:
     """Partially Observable Multi-Agent Monte-Carlo Planning.
@@ -95,7 +97,7 @@ class MCTS:
     # Step
     #######################################################
 
-    def step(self, obs: M.ObsType) -> M.ActType:
+    def step(self, real_obs: M.ObsType) -> M.ActType:
         ''' main usage of the planner: taking a step ...'''
 
         assert self.root.t <= self.step_limit
@@ -107,8 +109,8 @@ class MCTS:
 
         self._reset_step_statistics()
 
-        self._log_info(f"Step {self._step_num} obs={obs}")
-        self.update(self._last_action, obs)
+        self._log_info(f"Step {self._step_num} obs={real_obs}")
+        self.update(self._last_action, real_obs)
 
         self._last_action = self.get_action()
         self._step_num += 1
@@ -160,17 +162,18 @@ class MCTS:
     # UPDATE
     #######################################################
 
-    def update(self, action: M.ActType, obs: M.ObsType):
-        self._log_info(f"Step {self.root.t} update for a={action} o={obs}")
+    def update(self, action: M.ActType, real_obs: M.ObsType):
+        '''wrapper for (0) _initial_update; or (1) Update the root node based on the taken action and received observation. Also, pruning "dead" (previous) branches"'''
+        self._log_info(f"Step {self.root.t} update for a={action} o={real_obs}")
         if self.root.is_absorbing:
             return
 
         start_time = time.time()
         if self.root.t == 0:
             self._last_action = None
-            self._initial_update(obs)
+            self._initial_update(real_obs)
         else:
-            self._update(action, obs)
+            self._update(action, real_obs)
 
         update_time = time.time() - start_time
         self.step_statistics["update_time"] = update_time
@@ -240,7 +243,7 @@ class MCTS:
         self.root = obs_node
         self.root.parent = None
 
-    def _update(self, action: M.ActType, obs: M.ObsType):
+    def _update(self, action: M.ActType, real_obs: M.ObsType):
         '''
         Update the root node based on the taken action and received observation. Also, pruning "dead" (previous) branches
         '''
@@ -254,34 +257,29 @@ class MCTS:
             else:
                 raise ex
 
-        try: # get child obs node matching given observation !!!
+        try:
 
-            obs_node = action_node.get_child(obs)
+            obs_node = action_node.get_child(real_obs)
         except AssertionError:
             # Obs node not found
             # Add obs node with uniform policy prior
             # This will be updated in the course of doing simulations
-            obs_node = self._add_obs_node(action_node, obs, init_visits=0)
+            obs_node = self._add_obs_node(action_node, real_obs, init_visits=0)
             obs_node.is_absorbing = self.root.is_absorbing
 
         if obs_node.is_absorbing:
             self._log_debug("Absorbing state reached.")
         else:
             self._log_debug(
-                f"Belief size before reinvigoration = {obs_node.belief.size()}"
+                f"Belief size (of o - child of action) before reinvigoration = {obs_node.belief.size()}"
             )
             ############ DEBUGGINGGGGGGGGGGGGGGGGGGGGGGGGGG
             tmp = obs_node.belief.size()
             self._log_debug(f"Parent belief size = {self.root.belief.size()}")
-            self._reinvigorate(obs_node, action, obs)
+            self._reinvigorate(obs_node, action, real_obs)
             self._log_debug(
                 f"Belief size after reinvigoration = {obs_node.belief.size()}"
             )
-            # check if belief size changed after reinvigoration
-            if obs_node.belief.size() != tmp:
-                self._log_debug("Reinvigoration change belief size")
-            if tmp == 0:
-                self._log_debug("Belief size ZERO????")
 
         self.root = obs_node
         # remove reference to parent, effectively pruning dead branches
@@ -307,10 +305,6 @@ class MCTS:
             for action in self.action_space:
                 self.root.add_child(action)
 
-        ###########################################################
-        # Main algo loop
-        max_search_depth = 0
-        n_sims = 0
 
         #### debug !!!!!!!!!!!!!!! ####
         unique_states = {}
@@ -322,28 +316,38 @@ class MCTS:
             self._log_debug(f"Unique robot states in belief: {len(unique_states)}")
         #### debug !!!!!!!!!!!!!!! ####
 
+        ###########################################################
+        ###########################################################
+        # Main algo loop
+        max_search_depth = 0
+        n_sims = 0
         while time.time() - start_time < self.config.search_time_limit:
             hps = self.root.belief.sample()
             _, search_depth = self._simulate(hps, self.root, 0, self.search_policy)
-        ########################################################
+        ###########################################################
+        ###########################################################
             self.root.visits += 1
             max_search_depth = max(max_search_depth, search_depth)
             n_sims += 1
         
 
+        vis_mcts_tree.print_detailed_stats(self.root)
         search_time = time.time() - start_time
         self.step_statistics["search_time"] = search_time
         self.step_statistics["search_depth"] = max_search_depth
         self.step_statistics["num_sims"] = n_sims
         self.step_statistics["min_value"] = self._min_max_stats.minimum
         self.step_statistics["max_value"] = self._min_max_stats.maximum
-        self._log_info(f"{search_time=:.2f} {max_search_depth=}")
+        self._log_info(f":   {search_time=:.2f} {max_search_depth=} {n_sims=}")
         if self.config.known_bounds is None:
             self._log_info(
                 f"{self._min_max_stats.minimum=:.2f} "
                 f"{self._min_max_stats.maximum=:.2f}"
             )
         self._log_info(f"Root node policy prior = {self.root.policy_str()}")
+
+
+        # vis_mcts_tree.print_action_ranking(self.root, self.config)
 
         return self._final_action_selection(self.root)
 
