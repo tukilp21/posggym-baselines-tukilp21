@@ -307,13 +307,13 @@ class MCTS:
 
 
         #### debug !!!!!!!!!!!!!!! ####
-        unique_states = {}
-        for particle in self.root.belief.particles:
-            # use robot state as key for counting unique states in belief
-            robot_state = particle.state[0]
-            unique_states[robot_state] = unique_states.get(robot_state, 0) + 1
-        if len(unique_states) > 1:
-            self._log_debug(f"Unique robot states in belief: {len(unique_states)}")
+        # unique_states = {}
+        # for particle in self.root.belief.particles:
+        #     # use robot state as key for counting unique states in belief
+        #     robot_state = particle.state[0]
+        #     unique_states[robot_state] = unique_states.get(robot_state, 0) + 1
+        # if len(unique_states) > 1:
+        #     self._log_debug(f"Unique robot states in belief: {len(unique_states)}")
         #### debug !!!!!!!!!!!!!!! ####
 
         ###########################################################
@@ -814,7 +814,8 @@ class MCTS:
 
     def _log_info(self, msg: str):
         """Log an info message."""
-        self._logger.log(logging.INFO - 1, self._format_msg(msg))
+        # self._logger.log(logging.INFO - 1, self._format_msg(msg))
+        self._logger.log(self._format_msg(msg))
 
     def _log_debug(self, msg: str):
         """Log a debug message."""
