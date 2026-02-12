@@ -305,16 +305,8 @@ class MCTS:
             for action in self.action_space:
                 self.root.add_child(action)
 
-
-        #### debug !!!!!!!!!!!!!!! ####
-        # unique_states = {}
-        # for particle in self.root.belief.particles:
-        #     # use robot state as key for counting unique states in belief
-        #     robot_state = particle.state[0]
-        #     unique_states[robot_state] = unique_states.get(robot_state, 0) + 1
-        # if len(unique_states) > 1:
-        #     self._log_debug(f"Unique robot states in belief: {len(unique_states)}")
-        #### debug !!!!!!!!!!!!!!! ####
+        # # get action_count from model
+        # tmp = self.model._action_count
 
         ###########################################################
         ###########################################################

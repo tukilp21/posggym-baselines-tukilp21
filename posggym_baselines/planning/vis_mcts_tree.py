@@ -55,13 +55,24 @@ def compute_detailed_stats(node, depth=0, is_root=True):
             stats['root_particles'] = node.belief.size()
             stats['root_visits'] = node.visits
             
-            # Analyze unique robot states in root belief
-            unique_states = {}
+            # Analyze unique states in root belief
+            unique_robot_states = {}
+            unique_obj_coords = {}
+            unique_obj_status = {}
+            
             for particle in node.belief.particles:
-                # Extract robot state (assuming it's the first element of state tuple/list)
-                robot_state = particle.state[0] if hasattr(particle.state, '__getitem__') else particle.state
-                unique_states[robot_state] = unique_states.get(robot_state, 0) + 1
-            stats['root_unique_states'] = unique_states
+                # Assuming state is (robot_coord, obj_coord, obj_status, ...)
+                robot_state = particle.state[0]
+                obj_coord = particle.state[1]
+                obj_status = particle.state[2]
+                
+                unique_robot_states[robot_state] = unique_robot_states.get(robot_state, 0) + 1
+                unique_obj_coords[obj_coord] = unique_obj_coords.get(obj_coord, 0) + 1
+                unique_obj_status[obj_status] = unique_obj_status.get(obj_status, 0) + 1
+            
+            stats['root_unique_robot_states'] = unique_robot_states
+            stats['root_unique_obj_coords'] = unique_obj_coords
+            stats['root_unique_obj_status'] = unique_obj_status
         
         if len(node.children) == 0:  # recursion base case
             stats['leaf_nodes'] = 1
@@ -123,25 +134,43 @@ def print_detailed_stats(root,
     print("\nRoot Node Statistics (where action selection happens):")
     root_particles = stats['root_particles']
     root_visits = stats['root_visits']
-    unique_states = stats['root_unique_states']
     
     print(f"  Particles: {root_particles}")
     print(f"  Visits: {root_visits}")
-    print(f"  Unique robot states: {len(unique_states)}")
     
-    if len(unique_states) <= 10:
-        print("  Robot state distribution:")
-        # Sort by count descending
-        sorted_states = sorted(unique_states.items(), key=lambda x: x[1], reverse=True)
-        for state, count in sorted_states:
+    # Print uniqueness statistics
+    unique_robot_states = list(stats.get('root_unique_robot_states', {}).items())
+    unique_obj_coords = list(stats.get('root_unique_obj_coords', {}).items())
+    unique_obj_status = list(stats.get('root_unique_obj_status', {}).items())
+    
+
+    print(f"  Unique Particle set: ")
+    # only show if there are 2 or more unique set
+    unique_set = 2
+    # Show unique particle  distribution
+    if len(unique_robot_states) >= unique_set:
+        sorted_states = sorted(unique_robot_states, key=lambda x: x[1], reverse=True)
+        limit = 10 if len(sorted_states) > 10 else len(sorted_states)
+        for state, count in sorted_states[:limit]:
             percentage = (count / root_particles) * 100
             print(f"    {state}: {count} particles ({percentage:.1f}%)")
-    else:
-        print("  Top 10 robot states by particle count:")
-        sorted_states = sorted(unique_states.items(), key=lambda x: x[1], reverse=True)[:10]
-        for state, count in sorted_states:
+        if len(sorted_states) > 10:
+            print(f"    ... and {len(sorted_states) - 10} more")
+    
+    if len(unique_obj_coords) >= unique_set:
+        sorted_coords = sorted(unique_obj_coords, key=lambda x: x[1], reverse=True)
+        limit = 10 if len(sorted_coords) > 10 else len(sorted_coords)
+        for coord, count in sorted_coords[:limit]:
             percentage = (count / root_particles) * 100
-            print(f"    {state}: {count} particles ({percentage:.1f}%)")
+            print(f"    {coord}: {count} particles ({percentage:.1f}%)")
+        if len(sorted_coords) > 10:
+            print(f"    ... and {len(sorted_coords) - 10} more")
+    
+    if len(unique_obj_status) >= unique_set:
+        sorted_status = sorted(unique_obj_status, key=lambda x: x[1], reverse=True)
+        for status, count in sorted_status:
+            percentage = (count / root_particles) * 100
+            print(f"    {status}: {count} particles ({percentage:.1f}%)")
 
     ################################
     print("\nTree structure:")
@@ -152,6 +181,8 @@ def print_detailed_stats(root,
     ################################
     # Tree-scan: True iff any ObsNode in the current tree is marked absorbing.
     reached_terminal = stats['reached_terminal_state']
+    if reached_terminal:
+        pass
     print("\nPlanning has reached terminal state (in simulations):")
     print(f"  {reached_terminal}")
 
