@@ -814,8 +814,7 @@ class MCTS:
 
     def _log_info(self, msg: str):
         """Log an info message."""
-        # self._logger.log(logging.INFO - 1, self._format_msg(msg))
-        self._logger.log(self._format_msg(msg))
+        self._logger.log(logging.INFO - 1, self._format_msg(msg))
 
     def _log_debug(self, msg: str):
         """Log a debug message."""
