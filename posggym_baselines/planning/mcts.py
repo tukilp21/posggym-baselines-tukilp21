@@ -323,7 +323,9 @@ class MCTS:
             n_sims += 1
         
 
-        vis_mcts_tree.print_detailed_stats(self.root)
+        vis_mcts_tree.print_detailed_stats(self.root, 
+                                           particle_stats=True, 
+                                           tree_stats=False)
         search_time = time.time() - start_time
         self.step_statistics["search_time"] = search_time
         self.step_statistics["search_depth"] = max_search_depth
@@ -705,6 +707,7 @@ class MCTS:
         obs: M.ObsType,
         init_visits: int = 0,
     ) -> ObsNode:
+        
         next_search_policy_state = self._update_policy_state(
             parent.action,
             obs,
@@ -752,7 +755,7 @@ class MCTS:
 
         if target_node_size is None:
             #################################################
-            # NOTE: this is K in the paper
+            # this is K in the paper
             particles_to_add = self.config.num_particles + self.config.extra_particles
         else:
             particles_to_add = target_node_size

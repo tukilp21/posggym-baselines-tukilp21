@@ -52,6 +52,7 @@ class ParticleBelief(Generic[ParticleType]):
         self.particles = []
 
     def sample(self) -> ParticleType:
+        '''random sample from belief particles'''
         return self.rng.choice(self.particles)
 
     def add_particle(self, state: ParticleType):
@@ -152,6 +153,11 @@ class BeliefRejectionSampler:
         joint_update_fn: Callable,
         use_rejected_samples: bool,
     ) -> List[HistoryPolicyState]:
+        ''' two rejection mode:
+        - use_rejected_samples=False: HARD rejection, skip all p with non-matching obs
+        - use_rejected_samples=True: Add rejected p into the "accepted p (with matching obs)
+        '''
+
         sample_count = 0
         num_attempts = 0
         rejected_samples = []
@@ -173,6 +179,7 @@ class BeliefRejectionSampler:
             else:
                 new_joint_history = hps.history.extend(joint_action, joint_obs)
                 next_policy_state = joint_update_fn(hps, joint_action, joint_obs)
+
             next_hps = HistoryPolicyState(
                 joint_step.state,
                 new_joint_history,

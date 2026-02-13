@@ -119,7 +119,7 @@ def compute_detailed_stats(node, depth=0, is_root=True):
     return stats
 
 
-def print_detailed_stats(root, 
+def print_detailed_stats(root, tree_stats = False, particle_stats = False, search_stats=False
                         #  step_stats
                          ):
     
@@ -130,92 +130,95 @@ def print_detailed_stats(root,
     print("DETAILED TREE STATISTICS")
     print("=" * 70)
 
-        #################################3
-    print("\nRoot Node Statistics (where action selection happens):")
-    root_particles = stats['root_particles']
-    root_visits = stats['root_visits']
-    
-    print(f"  Particles: {root_particles}")
-    print(f"  Visits: {root_visits}")
-    
-    # Print uniqueness statistics
-    unique_robot_states = list(stats.get('root_unique_robot_states', {}).items())
-    unique_obj_coords = list(stats.get('root_unique_obj_coords', {}).items())
-    unique_obj_status = list(stats.get('root_unique_obj_status', {}).items())
-    
+    #################################
+    if particle_stats:
+        print("\nRoot Node Statistics: ")
+        root_particles = stats['root_particles']
+        root_visits = stats['root_visits']
+        
+        print(f"  Particles: {root_particles}")
+        print(f"  Visits: {root_visits}")
+        
+        # Print uniqueness statistics
+        unique_robot_states = list(stats.get('root_unique_robot_states', {}).items())
+        unique_obj_coords = list(stats.get('root_unique_obj_coords', {}).items())
+        unique_obj_status = list(stats.get('root_unique_obj_status', {}).items())
+        
 
-    print(f"  Unique Particle set: ")
-    # only show if there are 2 or more unique set
-    unique_set = 2
-    # Show unique particle  distribution
-    if len(unique_robot_states) >= unique_set:
-        sorted_states = sorted(unique_robot_states, key=lambda x: x[1], reverse=True)
-        limit = 10 if len(sorted_states) > 10 else len(sorted_states)
-        for state, count in sorted_states[:limit]:
-            percentage = (count / root_particles) * 100
-            print(f"    {state}: {count} particles ({percentage:.1f}%)")
-        if len(sorted_states) > 10:
-            print(f"    ... and {len(sorted_states) - 10} more")
-    
-    if len(unique_obj_coords) >= unique_set:
-        sorted_coords = sorted(unique_obj_coords, key=lambda x: x[1], reverse=True)
-        limit = 10 if len(sorted_coords) > 10 else len(sorted_coords)
-        for coord, count in sorted_coords[:limit]:
-            percentage = (count / root_particles) * 100
-            print(f"    {coord}: {count} particles ({percentage:.1f}%)")
-        if len(sorted_coords) > 10:
-            print(f"    ... and {len(sorted_coords) - 10} more")
-    
-    if len(unique_obj_status) >= unique_set:
-        sorted_status = sorted(unique_obj_status, key=lambda x: x[1], reverse=True)
-        for status, count in sorted_status:
-            percentage = (count / root_particles) * 100
-            print(f"    {status}: {count} particles ({percentage:.1f}%)")
-
-    ################################
-    print("\nTree structure:")
-    # print(f"  Max depth: {stats['max_depth']}")
-    print(f"  Max action children: {stats['max_action_children']}")
-    print(f"  Max obs children: {stats['max_obs_children']}")
+        print(f"  Unique Particle set: ")
+        # only show if there are 2 or more unique set
+        unique_set = 2
+        # Show unique particle  distribution
+        if len(unique_robot_states) >= unique_set:
+            sorted_states = sorted(unique_robot_states, key=lambda x: x[1], reverse=True)
+            limit = 10 if len(sorted_states) > 10 else len(sorted_states)
+            for state, count in sorted_states[:limit]:
+                percentage = (count / root_particles) * 100
+                print(f"    {state}: {count} particles ({percentage:.1f}%)")
+            if len(sorted_states) > 10:
+                print(f"    ... and {len(sorted_states) - 10} more")
+        
+        if len(unique_obj_coords) >= unique_set:
+            sorted_coords = sorted(unique_obj_coords, key=lambda x: x[1], reverse=True)
+            limit = 10 if len(sorted_coords) > 10 else len(sorted_coords)
+            for coord, count in sorted_coords[:limit]:
+                percentage = (count / root_particles) * 100
+                print(f"    {coord}: {count} particles ({percentage:.1f}%)")
+            if len(sorted_coords) > 10:
+                print(f"    ... and {len(sorted_coords) - 10} more")
+        
+        if len(unique_obj_status) >= unique_set:
+            sorted_status = sorted(unique_obj_status, key=lambda x: x[1], reverse=True)
+            for status, count in sorted_status:
+                percentage = (count / root_particles) * 100
+                print(f"    {status}: {count} particles ({percentage:.1f}%)")
 
     ################################
-    # Tree-scan: True iff any ObsNode in the current tree is marked absorbing.
-    reached_terminal = stats['reached_terminal_state']
-    if reached_terminal:
-        pass
-    print("\nPlanning has reached terminal state (in simulations):")
-    print(f"  {reached_terminal}")
+    if tree_stats:
+        print("\nTree structure:")
+        print(f"  Max depth: {stats['max_depth']}")
+        print(f"  Max action children: {stats['max_action_children']}")
+        print(f"  Max obs children: {stats['max_obs_children']}")
 
-    print("\nDepth histogram of Obs nodes:")
-    for depth in sorted(stats['depth_histogram'].keys()):
-        count = stats['depth_histogram'][depth]
-        bar = "█" * round(min(count, 300) / 6)
-        print(f"{depth:2d}: {count:4d} nodes {bar}")
-    
-    print("\nNode counts:")
-    print(f"  Obs nodes: {stats['obs_nodes']}", end=" ||")
-    print(f"  Action nodes: {stats['action_nodes']}", end=" ||")
-    # print(f"  Total nodes: {stats['obs_nodes'] + stats['action_nodes']}")
-    print(f"  Leaf nodes: {stats['leaf_nodes']}")
+        print("\nDepth histogram of Obs nodes:")
+        for depth in sorted(stats['depth_histogram'].keys()):
+            count = stats['depth_histogram'][depth]
+            bar = "█" * round(min(count, 300) / 6)
+            print(f"{depth:2d}: {count:4d} nodes {bar}")
 
-    print("\nTotal visits across all nodes: ", stats['total_visits'])
-    print("Total particles across all Obs nodes: ", stats['total_particles'])
-    print("Average particles per Obs node: ", stats['total_particles'] / max(stats['obs_nodes'], 1))
+        # Tree-scan: True iff any ObsNode in the current tree is marked absorbing.
+        reached_terminal = stats['reached_terminal_state']
+        if reached_terminal:
+            pass
+        print("\nPlanning has reached terminal state:")
+        print(f"  {reached_terminal}")
+
+        print("\nNode counts:")
+        print(f"  Obs nodes: {stats['obs_nodes']}", end=" ||")
+        print(f"  Action nodes: {stats['action_nodes']}", end=" ||")
+        # print(f"  Total nodes: {stats['obs_nodes'] + stats['action_nodes']}")
+        print(f"  Leaf nodes: {stats['leaf_nodes']}")
+
+
+        # print("\nTotal visits across all nodes: ", stats['total_visits'])
+        # print("Total particles across all Obs nodes: ", stats['total_particles'])
+        # print("Average particles per Obs node: ", stats['total_particles'] / max(stats['obs_nodes'], 1))
 
 
     # ################################
-    # print("\nSearch Iteration statistics:")
-    # for key, value in step_stats.items():
-    #     # only print certain keys
-    #     if key not in ['num_sims', 'search_depth', 
-    #                    'min_value', 'max_value' # Q-value of actions
-    #                    ]:
-    #         continue
+    if search_stats:
+        print("\nSearch Iteration statistics:")
+        for key, value in step_stats.items():
+            # only print certain keys
+            if key not in ['num_sims', 'search_depth', 
+                        'min_value', 'max_value' # Q-value of actions
+                        ]:
+                continue
 
-    #     if isinstance(value, float):
-    #         print(f"  {key}: {value:.4f}")
-    #     else:
-    #         print(f"  {key}: {value}")
+            if isinstance(value, float):
+                print(f"  {key}: {value:.4f}")
+            else:
+                print(f"  {key}: {value}")
 
 
 def print_action_ranking(root, planner_config):
