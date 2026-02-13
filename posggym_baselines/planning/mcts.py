@@ -1,5 +1,5 @@
 import logging
-logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 import math
 import random
 import time
@@ -267,19 +267,19 @@ class MCTS:
             obs_node = self._add_obs_node(action_node, real_obs, init_visits=0)
             obs_node.is_absorbing = self.root.is_absorbing
 
+        ############ DEBUGGINGGGGGGGGGGGGGGGGGGGGGGGGGG
+        print()
         if obs_node.is_absorbing:
-            self._log_debug("Absorbing state reached.")
+            print("Absorbing state reached.")
         else:
-            self._log_debug(
-                f"Belief size (of o - child of action) before reinvigoration = {obs_node.belief.size()}"
+            print(
+                f"!!! Belief size (of hao) before reinvigoration = {obs_node.belief.size()}"
             )
-            ############ DEBUGGINGGGGGGGGGGGGGGGGGGGGGGGGGG
+            
             tmp = obs_node.belief.size()
-            self._log_debug(f"Parent belief size = {self.root.belief.size()}")
+            print(f"!!! Belief size (of h) = {self.root.belief.size()}")
             self._reinvigorate(obs_node, action, real_obs)
-            self._log_debug(
-                f"Belief size after reinvigoration = {obs_node.belief.size()}"
-            )
+            print(f"!!!Belief size (of hao) after reinvigoration = {obs_node.belief.size()}")
 
         self.root = obs_node
         # remove reference to parent, effectively pruning dead branches
@@ -325,7 +325,7 @@ class MCTS:
 
         vis_mcts_tree.print_detailed_stats(self.root, 
                                            particle_stats=True, 
-                                           tree_stats=False)
+                                           tree_stats=True)
         search_time = time.time() - start_time
         self.step_statistics["search_time"] = search_time
         self.step_statistics["search_depth"] = max_search_depth
@@ -341,7 +341,7 @@ class MCTS:
         self._log_info(f"Root node policy prior = {self.root.policy_str()}")
 
 
-        # vis_mcts_tree.print_action_ranking(self.root, self.config)
+        vis_mcts_tree.print_action_ranking(self.root, self.config)
 
         return self._final_action_selection(self.root)
 
@@ -365,12 +365,12 @@ class MCTS:
             return 0, depth
 
 
-        ############# First time visiting this node?
+        ############# if h is not in tree (in this implementation where act and obs are nodes, this is equivalent to checking if obs node has no childern)
         if len(obs_node.children) == 0: 
             # leaf node reached
             for action in self.action_space:
                 obs_node.add_child(action)
-            leaf_node_value = self._evaluate(
+            leaf_node_value = self._evaluate( # ~ rollout
                 hps,
                 depth,
                 search_policy,
@@ -396,7 +396,7 @@ class MCTS:
         )
 
         if ego_done:
-            # self._log_debug(f"Terminal state reached at depth {depth} with return {ego_return:.2f}")
+            self._log_debug(f"Terminal state reached at depth {depth} with return {ego_return:.2f}")
             pass
 
         # create child_obs_node with
@@ -416,7 +416,12 @@ class MCTS:
         
         action_node = obs_node.get_child(ego_action)
 
-        # Check if action node (next node) has a child node matching history - if yes, then add new particle to exisit
+
+        ########### update B(h) and N(h) - for current Obs_node
+        #################################################################
+        # NOTE: Rejection sampling is happening here
+        # NOTE: Update root node first before recursive simulate
+        # Check if action node (next node) has a child node matching history - if yes, then add new particle to existing
         if action_node.has_child(ego_obs):
             child_obs_node = action_node.get_child(ego_obs)
             child_obs_node.visits += 1
@@ -433,7 +438,6 @@ class MCTS:
         child_obs_node.is_absorbing = ego_done
         child_obs_node.belief.add_particle(next_hps)
 
-        
         ####### recursive simulation 
         max_depth = depth
         if not ego_done:
@@ -442,7 +446,10 @@ class MCTS:
             )
             ego_return += self.config.discount * future_return
 
-        ###### BACKUP
+
+        #################################################################
+        ###### update N(ha and V(ha) - for child Action_node
+        #################################################################
         action_node.update(ego_return)
         self._min_max_stats.update(action_node.value)
         return ego_return, max_depth
@@ -776,7 +783,7 @@ class MCTS:
             parent_belief=parent_obs_node.belief,
             joint_action_fn=self._reinvigorate_action_fn,
             joint_update_fn=self._reinvigorate_update_fn,
-            **{"use_rejected_samples": True},  # used for rejection sampling
+            **{"use_rejected_samples": False},  # used for rejection sampling
         )
 
         reinvig_time = time.time() - start_time
